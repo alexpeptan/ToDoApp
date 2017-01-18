@@ -56,7 +56,10 @@ public class UserServiceTest {
             e.printStackTrace();
         }
 
+        Assert.assertNotNull(LOGIN_FAILED, userService.getSession().getAttribute(Constants.CURRENT_USER));
+
         userService.logout();
+
         Assert.assertEquals(LOGOUT_PERFORMED_UNSUCCESSFULLY, null, userService.getSession().getAttribute(Constants.CURRENT_USER));
     }
 }

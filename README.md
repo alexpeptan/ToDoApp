@@ -28,6 +28,6 @@ Resources
 * http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
 * http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 * http://www.w3schools.com/tags/ref_urlencode.asp
-* spring data opiniated queries!
+* spring data opinionated queries!
 * basic AUTH
 * spring security

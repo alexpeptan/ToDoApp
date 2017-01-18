@@ -24,4 +24,15 @@ public class MySpecialSecurity {
             return Long.toString(t.getAuthor().getId()).equals(u.getUsername());
         }
     }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean isTaskAssignee(Long taskId) {
+        Task t = taskRepository.findOne(taskId);
+        if(t == null){
+            return true;
+        } else {
+            User crtUser = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            return crtUser.getUsername().equals(String.valueOf(t.getAssignee().getId()));
+        }
+    }
 }

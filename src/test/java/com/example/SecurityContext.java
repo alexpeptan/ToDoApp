@@ -16,8 +16,25 @@ public class SecurityContext {
 			SecurityContextHolder.clearContext();
 		}
 	}
+
+	public static <T> T executeInUserContext(User user, Callback2<T> callback){
+		try {
+			final UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(
+					user.getUserName(), user.getPassword());
+			SecurityContextHolder.getContext().setAuthentication(token);
+			return callback.executeInContext();
+		} finally {
+			SecurityContextHolder.clearContext();
+		}
+	}
 	
-	static interface Callback<T> {
+	interface Callback<T> {
 		T executeInContext(User user);
 	}
+
+	interface Callback2<T>{
+		T executeInContext();
+	}
+
+
 }

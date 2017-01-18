@@ -21,6 +21,7 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.Random;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest
@@ -41,13 +42,12 @@ public class TaskServiceTest {
     public void createUserBeforeEachTest() {
         existingUser = new User("alex", "adelina");
         userService.create(existingUser);
-
         // TODO check these suggestions, which one fits :)
         // userService.create(String username, String password): User
         // userService.create(UserDTO user): User
 
 	    // Create task
-	    TaskVO vo = TaskVO.builder().message("Sample").build();
+	    TaskVO vo = TaskVO.builder().message("Sample").assigneeId(existingUser.getId()).build();
 	    existingTask = SecurityContext.executeInUserContext(existingUser, u -> service.create(vo));
     }
 
@@ -69,8 +69,7 @@ public class TaskServiceTest {
     @Test
     public void shouldDeleteTaskWhenCalledByOwner() throws Exception {
         // Delete task
-        final UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(existingUser.getUserName(), existingUser.getPassword());
-        SecurityContextHolder.getContext().setAuthentication(token);
+        loginAs(existingUser);
         /* action */
         service.delete(existingTask.getId());
         /* action */
@@ -80,14 +79,18 @@ public class TaskServiceTest {
     }
 
 
+    private void loginAs(User user){
+        final UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(user.getUserName(), user.getPassword());
+        SecurityContextHolder.getContext().setAuthentication(token);
+    }
+
     @Test(expected = AccessDeniedException.class)
     public void shouldNotDeleteTaskWhenCalledBySomeOneElseThanOwner() throws Exception {
         // Delete task
         User badBoy = new User("alex badBoy", "adelina");
         userService.create(badBoy);
         try {
-            final UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(badBoy.getUserName(), badBoy.getPassword());
-            SecurityContextHolder.getContext().setAuthentication(token);
+            loginAs(badBoy);
             /* action */
             service.delete(existingTask.getId());
             /* action */
@@ -98,4 +101,93 @@ public class TaskServiceTest {
         }
     }
 
+    private Task reAssign(Task task, User newUser) throws AccessDeniedException{
+        return service.update(task.getId(), TaskVO.builder().message(task.getMessage()).
+            assigneeId(newUser.getId()).build());
+    }
+
+
+    // Template method!!! - executeInUserContext
+    @Test  // Super lizibil!
+    public void shouldReassignWhenCalledByOwnerAndCreator() { // fails to check that test users really exist in the Database!!!  // mai multe teste -> Refactor!
+        // reassign as a creator and owner
+        User newOwner = new User("The new guy", "123456");
+        userService.create(newOwner);
+        try {
+//            loginAs(existingUser);
+//            reAssign(existingTask, newOwner);// and repeat!
+            SecurityContext.executeInUserContext(existingUser, () -> reAssign(existingTask, someUser()));
+
+        } catch (AccessDeniedException ex) {
+            Assert.fail("Creator and Owner was not able to reassign task");
+        }
+
+//        Assert.assertNotEquals("Task reassignment failed", existingTask.getAssignee(), newOwner);
+        Assert.assertNotEquals("Task reassignment failed", existingTask.getAssignee(), existingUser);
+    }
+
+    @Test
+    public void shouldReassignWhenCalledByCreator() {
+        try {
+            // Build Precondition - task creator is not the owner of the task
+            Assert.assertTrue("@Before Precondition not met", existingTask.getAssignee().equals(existingUser));
+            SecurityContext.executeInUserContext(existingUser, u -> reAssign(existingTask, someUser()));
+            Assert.assertTrue("The task was not successfully reassigned", !existingTask.getAssignee().equals(existingUser));
+
+            // reassign as a creator, but not the owner, back to himself
+            SecurityContext.executeInUserContext(existingUser, u -> reAssign(existingTask, u));
+            Assert.assertTrue("The creator failed to reassign the task to itself", existingTask.getAssignee().equals(existingUser));
+        } catch (AccessDeniedException ex) {
+            Assert.fail("The creator should always be permitted to reassign the task");
+        }
+    }
+
+    @Test(expected = AccessDeniedException.class)
+    public void shouldFailToReassignWhenCalledBySomeoneElseThanCreatorOrOwner() {
+        // Build Precondition - task owner is not its creator
+        try {
+            SecurityContext.executeInUserContext(existingUser, u -> reAssign(existingTask, someUser()));
+        } catch (AccessDeniedException ex) {
+            Assert.fail("Reassign by creator failed");
+        }
+
+        SecurityContext.executeInUserContext(someUser(), u -> reAssign(existingTask, someUser()));
+    }
+
+     @Test
+     public void shouldReassignWhenCalledByOwner() {
+         // reassign as a owner, but not creator
+         User newOwner = someUser();
+         try {
+             // Precondition - the owner will need to differ from the creator
+
+             SecurityContext.executeInUserContext(existingUser, u -> reAssign(existingTask, newOwner));
+         } catch (AccessDeniedException ex) {
+             Assert.fail("Reassign by creator failed");
+         }
+
+         try {
+             SecurityContext.executeInUserContext(newOwner, u -> reAssign(existingTask, someUser()));
+         } catch (AccessDeniedException ex) {
+             Assert.fail("Reassign by owner failed");
+         }
+
+         Assert.assertNotEquals("Owner should have been changed", existingTask.getAssignee(), newOwner);
+     }
+
+    @Test(expected = AccessDeniedException.class)
+    public void shouldNotReassignTaskAsAnonymous() {
+        SecurityContextHolder.getContext().setAuthentication(new AnonymousAuthenticationToken("(anon)", "(anon)",
+                Collections.singletonList(new SimpleGrantedAuthority("(anon)"))));
+
+        service.update(existingTask.getId(), TaskVO.builder().message(existingTask.getMessage()).
+                assigneeId(existingUser.getId()).build());
+    }
+
+    private User someUser() {
+        User newOwner = new User("The new guy" + String.valueOf(new Random().nextInt(1000)), "123456");
+        userService.create(newOwner);
+
+        return newOwner;
+    }
 }
